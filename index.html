@@ -151,7 +151,7 @@
     </div>
     <div id="urlwrap" class="hidden">
       <div class="bar">
-        <input id="urlIn" type="url" placeholder="https://…" inputmode="url" autocapitalize="off" autocorrect="off">
+        <input id="urlIn" type="url" placeholder="検索 または URL" inputmode="search" autocapitalize="off" autocorrect="off">
         <button id="urlGo">開く</button>
       </div>
       <iframe id="frame" title="manual" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
@@ -349,7 +349,9 @@
   // ---------- URL ----------
   const loadUrl = () => {
     let u = $('#urlIn').value.trim(); if (!u) return;
-    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    const isUrl = /^https?:\/\//i.test(u) || (/^[^\s]+\.[^\s]{2,}/.test(u) && !/\s/.test(u));
+    if (!isUrl) u = 'https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent(u);
+    else if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
     $('#frame').src = u;
     try { localStorage.setItem('url', u); } catch {}
   };
