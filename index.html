@@ -76,7 +76,8 @@
   .mbody{flex:1;min-height:0;position:relative;background:#333336}
   #pdfwrap{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px}
   #pdfwrap canvas{display:block;width:100%;margin:0 auto 8px;background:#fff;border-radius:3px}
-  #urlwrap{position:absolute;inset:0;display:flex;flex-direction:column}
+  #urlwrap,#mapwrap{position:absolute;inset:0;display:flex;flex-direction:column}
+  #map{flex:1;border:0;background:#e5e3df;width:100%}
   #urlbar{display:flex;gap:6px;padding:8px max(12px,var(--sar)) 8px max(12px,var(--sal));background:#1c1c1f}
   #urlbar input{flex:1;min-width:0;font:inherit;font-size:14px;padding:10px 12px;border-radius:10px;border:0;background:#2a2a2e;color:#fff}
   #urlbar button{padding:0 14px;border-radius:10px;background:#444449;font-size:13px}
@@ -153,6 +154,7 @@
     <div class="tabs">
       <button data-tab="pdf" class="on">PDF</button>
       <button data-tab="url">URL</button>
+      <button data-tab="map">地図</button>
     </div>
     <span class="sp"></span>
     <span id="mstat">撮影待機中</span>
@@ -176,6 +178,13 @@
       </div>
     </div>
   </div>
+    <div id="mapwrap" class="hidden">
+      <div id="urlbar">
+        <input id="mapIn" type="text" placeholder="住所・店名・Googleマップのリンク" autocapitalize="off" autocorrect="off">
+        <button id="mapGo">表示</button>
+      </div>
+      <iframe id="map" title="map" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+    </div>
   <div class="mbot">
     <button class="pdfbtn" id="pickPdf2">別のPDF</button>
     <button class="back" id="backBtn">📷 カメラに戻る</button>
@@ -365,9 +374,9 @@
   $('#backBtn').addEventListener('click', () => { man.classList.remove('open'); });
   document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
-    const pdf = b.dataset.tab === 'pdf';
-    $('#pdfwrap').classList.toggle('hidden', !pdf); $('#urlwrap').classList.toggle('hidden', pdf);
-    $('#pickPdf2').classList.toggle('hidden', !pdf);
+    const t = b.dataset.tab;
+    $('#pdfwrap').classList.toggle('hidden', t !== 'pdf'); $('#urlwrap').classList.toggle('hidden', t !== 'url'); $('#mapwrap').classList.toggle('hidden', t !== 'map');
+    $('#pickPdf2').classList.toggle('hidden', t !== 'pdf');
   }));
 
   // PDF: pdf.js で描画し、IndexedDB に保存
@@ -412,6 +421,30 @@
   $('#urlGo').addEventListener('click', loadUrl);
   $('#urlIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadUrl(); $('#urlIn').blur(); } });
   try { const u = localStorage.getItem('url'); if (u) { $('#urlIn').value = u; $('#frame').src = u; } } catch {}
+
+  // 地図：住所・店名・Googleマップのリンクを埋め込み表示に変換
+  const mapQuery = raw => {
+    let q = raw.trim();
+    try {
+      if (/^https?:\/\//i.test(q)) {
+        const u = new URL(q);
+        if (u.searchParams.get('q')) q = u.searchParams.get('q');
+        else if (u.searchParams.get('query')) q = u.searchParams.get('query');
+        else { const m = u.pathname.match(/\/place\/([^/]+)/); if (m) q = decodeURIComponent(m[1].replace(/\+/g, ' ')); else { const c = u.pathname.match(/@(-?[\d.]+),(-?[\d.]+)/); if (c) q = c[1] + ',' + c[2]; } }
+      }
+    } catch {}
+    return q;
+  };
+  const loadMap = () => {
+    const raw = $('#mapIn').value; if (!raw.trim()) return;
+    const q = mapQuery(raw);
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(raw) && q === raw.trim()) { toast('短縮リンクは開けません。店名や住所を入力してください', 3200); return; }
+    $('#map').src = 'https://www.google.com/maps?q=' + encodeURIComponent(q) + '&z=17&output=embed';
+    try { localStorage.setItem('map', raw); } catch {}
+  };
+  $('#mapGo').addEventListener('click', loadMap);
+  $('#mapIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadMap(); $('#mapIn').blur(); } });
+  try { const m = localStorage.getItem('map'); if (m) { $('#mapIn').value = m; loadMap(); } } catch {}
 
   // ---------- PWA ----------
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
