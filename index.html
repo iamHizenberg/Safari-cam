@@ -44,10 +44,7 @@
   #grid i:nth-child(4){top:66.66%;left:0;right:0;height:1px}
 
   /* 左上のアナウンスマーク（どの画面でも同じ位置） */
-  .mark{position:fixed;left:max(12px,var(--sal));top:calc(var(--sat) + 10px);z-index:30;height:40px;padding:0 14px 0 10px;border-radius:999px;background:var(--glass);display:flex;align-items:center;gap:8px;font-size:13px;font-variant-numeric:tabular-nums}
-  .mark .dot{width:10px;height:10px;border-radius:50%;background:#666}
-  .mark.rec .dot{background:var(--rec);animation:blink 1s infinite}
-  @keyframes blink{50%{opacity:.25}}
+  .mark{position:fixed;left:max(12px,var(--sal));top:calc(var(--sat) + 10px);z-index:30;width:40px;height:40px;border-radius:50%;background:var(--glass);display:grid;place-items:center;opacity:.6}
   .mark .ic{font-size:16px}
 
   .camtop{position:absolute;right:max(12px,var(--sar));top:calc(var(--sat) + 10px);display:flex;gap:8px}
@@ -77,8 +74,7 @@
   .tabs button.on{background:var(--chip2);color:#fff}
   .ttop .sp{flex:1}
   .pin.sm{width:40px;height:40px;font-size:10px;box-shadow:none}
-  .pin.sm.rec{background:var(--rec);color:#fff}
-  .tbody{flex:1;min-height:0;position:relative;background:#333336}
+    .tbody{flex:1;min-height:0;position:relative;background:#333336}
   #pdfwrap{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px}
   #pdfwrap canvas{display:block;width:100%;margin:0 auto 8px;background:#fff;border-radius:3px}
   #urlwrap,#mapwrap{position:absolute;inset:0;display:flex;flex-direction:column}
@@ -110,12 +106,11 @@
     <h1>Safari cam</h1>
     <button class="pin" id="startPin">pin</button>
   </div>
-  <p>pin を押すと録画が始まり、マニュアル画面が開きます。<br>撮影中の映像は左上のマークからいつでも確認できます。</p>
   <p id="startErr" class="note"></p>
 </div>
 
 <!-- 左上アナウンスマーク -->
-<button class="mark hidden" id="mark"><span class="dot"></span><span class="ic">📢</span><span id="markTime">待機</span></button>
+<button class="mark hidden" id="mark"><span class="ic">📢</span></button>
 
 <!-- カメラ画面（常に動作、トップ画面の裏にいる） -->
 <div id="cam" class="hidden">
@@ -151,9 +146,7 @@
   <div class="tbody">
     <div id="pdfwrap">
       <div class="empty" id="pdfEmpty">
-        <b>マニュアルPDFを開く</b>
         <button class="big" id="pickPdf">PDFを選ぶ</button>
-        <span class="note">一度開いたPDFはこの端末に保存され、次回も自動で表示されます。</span>
       </div>
     </div>
     <div id="urlwrap" class="hidden">
@@ -162,9 +155,6 @@
         <button id="urlGo">開く</button>
       </div>
       <iframe id="frame" title="manual" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
-      <div class="empty hidden" id="urlNote" style="top:56px;pointer-events:none">
-        <span class="note">表示されない場合、そのサイトが埋め込みを拒否しています。PDFに保存して読み込むのが確実です。</span>
-      </div>
     </div>
     <div id="mapwrap" class="hidden">
       <div class="bar">
@@ -257,7 +247,7 @@
     ctx.drawImage(video, 0, 0, w, h); ctx.restore();
     if (!('filter' in ctx)) whitenPixels(ctx, w, h);
     flash();
-    c.toBlob(b => { setLast(b); toast('写真を撮影しました'); }, 'image/jpeg', 0.92);
+    c.toBlob(b => { setLast(b); void 0; }, 'image/jpeg', 0.92);
   }
   function whitenPixels(ctx, w, h) { if (!beauty) return; const img = ctx.getImageData(0, 0, w, h), d = img.data, k = beauty / 100; for (let i = 0; i < d.length; i += 4) for (let c = 0; c < 3; c++) { const v = d[i + c]; d[i + c] = v + (255 - v) * 0.35 * k; } ctx.putImageData(img, 0, 0); }
   function flash() { const f = document.createElement('div'); f.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:.8;pointer-events:none;transition:opacity .25s;z-index:60'; document.body.appendChild(f); requestAnimationFrame(() => { f.style.opacity = 0; setTimeout(() => f.remove(), 300); }); }
@@ -283,23 +273,18 @@
     catch (e) { stopDraw(); return toast('録画を開始できません: ' + e.message); }
     chunks = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    rec.onstop = () => { stopDraw(); setLast(new Blob(chunks, { type: rec.mimeType || mime || 'video/mp4' })); toast('動画を保存しました（「最後の撮影を見る」から共有）', 3000); };
+    rec.onstop = () => { stopDraw(); setLast(new Blob(chunks, { type: rec.mimeType || mime || 'video/mp4' })); void 0; };
     rec.start(1000);
     recording = true; recStart = Date.now();
-    document.querySelectorAll('#mark,#topPin').forEach(el => el.classList.add('rec'));
     $('#stopBtn').textContent = '■ 録画停止'; $('#stopBtn').classList.remove('idle'); $('#topPin').textContent = 'stop';
-    recTimer = setInterval(tick, 500); tick();
-    if (!baked) toast('この端末では美白は動画に反映されません（写真は反映）', 3200);
   }
   function stopDraw() { if (drawLoop) cancelAnimationFrame(drawLoop); drawLoop = null; if (canvasStream) canvasStream.getVideoTracks().forEach(t => t.stop()); canvasStream = null; }
   function stopRec() {
     if (!rec) return;
     try { rec.stop(); } catch {}
-    recording = false; clearInterval(recTimer);
-    document.querySelectorAll('#mark,#topPin').forEach(el => el.classList.remove('rec'));
-    $('#markTime').textContent = '待機'; $('#stopBtn').textContent = '● 録画開始'; $('#stopBtn').classList.add('idle'); $('#topPin').textContent = 'pin';
+    recording = false;
+    $('#stopBtn').textContent = '● 録画開始'; $('#stopBtn').classList.add('idle'); $('#topPin').textContent = 'pin';
   }
-  function tick() { const s = Math.floor((Date.now() - recStart) / 1000); $('#markTime').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
 
   // ---------- サムネ / 確認 / 保存 ----------
   function setLast(blob) {
@@ -323,7 +308,7 @@
     const name = (isV ? 'VID_' : 'IMG_') + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + '.' + ext;
     const file = new File([lastBlob], name, { type: lastBlob.type });
     if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; } }
-    const a = document.createElement('a'); a.href = thumbUrl; a.download = name; document.body.appendChild(a); a.click(); a.remove(); toast('ダウンロードしました');
+    const a = document.createElement('a'); a.href = thumbUrl; a.download = name; document.body.appendChild(a); a.click(); a.remove(); void 0;
   });
 
   // ---------- タブ ----------
@@ -356,7 +341,7 @@
   $('#pdfFile').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
     const buf = await f.arrayBuffer(); await kvSet('pdf', buf);
-    try { await renderPdf(buf); toast(f.name + ' を読み込みました'); } catch (err) { toast('PDFを開けません: ' + err.message); }
+    try { await renderPdf(buf); void 0; } catch (err) { toast('PDFを開けません: ' + err.message); }
     e.target.value = '';
   });
   kvGet('pdf').then(buf => { if (buf) renderPdf(buf).catch(() => {}); });
@@ -365,7 +350,7 @@
   const loadUrl = () => {
     let u = $('#urlIn').value.trim(); if (!u) return;
     if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-    $('#frame').src = u; $('#urlNote').classList.remove('hidden'); setTimeout(() => $('#urlNote').classList.add('hidden'), 6000);
+    $('#frame').src = u;
     try { localStorage.setItem('url', u); } catch {}
   };
   $('#urlGo').addEventListener('click', loadUrl);
