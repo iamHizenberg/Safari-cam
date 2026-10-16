@@ -7,7 +7,9 @@ final class CameraManager: NSObject, ObservableObject {
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "safaricam.session")
     private let movieOutput = AVCaptureMovieFileOutput()
-    private let photoOutput = AVCapturePhotoOutput()
+    private let frameOutput = AVCaptureVideoDataOutput()
+    private let frameQueue = DispatchQueue(label: "safaricam.frames")
+    private var latestFrame: CVPixelBuffer?
     private var videoInput: AVCaptureDeviceInput?
     private var configured = false
     private let ciContext = CIContext()
@@ -36,7 +38,7 @@ final class CameraManager: NSObject, ObservableObject {
     private func configure() {
         guard !configured else { return }
         session.beginConfiguration()
-        session.sessionPreset = .high
+        session.sessionPreset = session.canSetSessionPreset(.hd4K3840x2160) ? .hd4K3840x2160 : .high
         if let dev = camera(for: position), let inp = try? AVCaptureDeviceInput(device: dev), session.canAddInput(inp) {
             session.addInput(inp); videoInput = inp
         }
@@ -44,7 +46,11 @@ final class CameraManager: NSObject, ObservableObject {
             session.addInput(inp)
         }
         if session.canAddOutput(movieOutput) { session.addOutput(movieOutput) }
-        if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
+        frameOutput.alwaysDiscardsLateVideoFrames = true
+        frameOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        frameOutput.setSampleBufferDelegate(self, queue: frameQueue)
+        if session.canAddOutput(frameOutput) { session.addOutput(frameOutput) }
+        if let conn = frameOutput.connection(with: .video), conn.isVideoOrientationSupported { conn.videoOrientation = .portrait }
         session.commitConfiguration()
         configured = true
     }
@@ -65,6 +71,7 @@ final class CameraManager: NSObject, ObservableObject {
             } else if let old = self.videoInput {
                 self.session.addInput(old)
             }
+            if let conn = self.frameOutput.connection(with: .video), conn.isVideoOrientationSupported { conn.videoOrientation = .portrait }
             self.session.commitConfiguration()
             DispatchQueue.main.async { self.position = newPos }
         }
@@ -94,29 +101,32 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Photo
 
+    /// 無音撮影：映像から1コマ抜き取る（シャッター音なし）
     func capturePhoto() {
-        queue.async {
-            let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-            if let conn = self.photoOutput.connection(with: .video) {
-                if conn.isVideoOrientationSupported { conn.videoOrientation = .portrait }
-                if conn.isVideoMirroringSupported { conn.isVideoMirrored = (self.position == .front) }
-            }
-            self.photoOutput.capturePhoto(with: settings, delegate: self)
+        let mirror = position == .front
+        let a = beauty
+        frameQueue.async {
+            guard let pb = self.latestFrame else { return }
+            var img = CIImage(cvPixelBuffer: pb)
+            if mirror { img = img.oriented(.upMirrored) }
+            img = self.whiten(img, amount: a)
+            guard let cs = CGColorSpace(name: CGColorSpace.sRGB),
+                  let jpg = self.ciContext.jpegRepresentation(of: img, colorSpace: cs, options: [:]) else { return }
+            self.saveToPhotos({
+                let r = PHAssetCreationRequest.forAsset()
+                r.addResource(with: .photo, data: jpg, options: nil)
+            })
         }
     }
 
     /// 美白：明るさ↑ コントラスト↓ 彩度↓
-    private func whiten(_ data: Data) -> Data {
-        let a = beauty
-        guard a > 0, let img = CIImage(data: data, options: [.applyOrientationProperty: true]),
-              let f = CIFilter(name: "CIColorControls") else { return data }
+    private func whiten(_ img: CIImage, amount a: Double) -> CIImage {
+        guard a > 0, let f = CIFilter(name: "CIColorControls") else { return img }
         f.setValue(img, forKey: kCIInputImageKey)
         f.setValue(Float(0.12 * a), forKey: kCIInputBrightnessKey)
         f.setValue(Float(1.0 - 0.12 * a), forKey: kCIInputContrastKey)
         f.setValue(Float(1.0 - 0.18 * a), forKey: kCIInputSaturationKey)
-        guard let out = f.outputImage, let cs = CGColorSpace(name: CGColorSpace.sRGB),
-              let jpg = ciContext.jpegRepresentation(of: out, colorSpace: cs, options: [:]) else { return data }
-        return jpg
+        return f.outputImage ?? img
     }
 
     private func saveToPhotos(_ change: @escaping () -> Void, then: (() -> Void)? = nil) {
@@ -136,13 +146,8 @@ extension CameraManager: AVCaptureFileOutputRecordingDelegate {
     }
 }
 
-extension CameraManager: AVCapturePhotoCaptureDelegate {
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let data = photo.fileDataRepresentation() else { return }
-        let out = whiten(data)
-        saveToPhotos({
-            let r = PHAssetCreationRequest.forAsset()
-            r.addResource(with: .photo, data: out, options: nil)
-        })
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        latestFrame = CMSampleBufferGetImageBuffer(sampleBuffer)
     }
 }
