@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000">
+<title>Safari cam</title>
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root{
+    --bg:#000; --fg:#fff; --dim:rgba(255,255,255,.65);
+    --glass:rgba(20,20,22,.55); --accent:#f2c6a0; --rec:#ff3b30;
+    --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+    --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 -apple-system,"Hiragino Sans",system-ui,sans-serif;overflow:hidden;overscroll-behavior:none}
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  .hidden{display:none!important}
+
+  /* ---------- camera ---------- */
+  #cam{position:fixed;inset:0;background:#000}
+  #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+  #video.mirror{transform:scaleX(-1)}
+  #grid{position:absolute;inset:0;pointer-events:none;opacity:0}
+  #grid.on{opacity:1}
+  #grid i{position:absolute;background:rgba(255,255,255,.35)}
+  #grid i:nth-child(1){left:33.33%;top:0;bottom:0;width:1px}
+  #grid i:nth-child(2){left:66.66%;top:0;bottom:0;width:1px}
+  #grid i:nth-child(3){top:33.33%;left:0;right:0;height:1px}
+  #grid i:nth-child(4){top:66.66%;left:0;right:0;height:1px}
+
+  .top{position:absolute;left:0;right:0;top:0;padding:calc(var(--sat) + 10px) max(16px,var(--sar)) 10px max(16px,var(--sal));display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .pill{background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:999px;padding:8px 14px;font-size:13px;display:flex;align-items:center;gap:8px;min-height:36px}
+  .pill.rec{color:#fff;background:rgba(255,59,48,.85)}
+  .pill.rec::before{content:"";width:9px;height:9px;border-radius:50%;background:#fff;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .ico{width:40px;height:40px;border-radius:50%;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:grid;place-items:center;font-size:18px}
+  .ico.on{background:var(--fg);color:#000}
+
+  .beauty{position:absolute;left:0;right:0;bottom:calc(var(--sab) + 148px);padding:0 max(20px,var(--sar)) 0 max(20px,var(--sal));display:flex;align-items:center;gap:12px}
+  .beauty label{font-size:12px;color:var(--dim);width:36px;letter-spacing:.04em}
+  .beauty input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:28px;background:transparent}
+  .beauty input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:rgba(255,255,255,.35)}
+  .beauty input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--accent);margin-top:-10.5px;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .beauty output{font-size:12px;width:28px;text-align:right;font-variant-numeric:tabular-nums}
+
+  .bottom{position:absolute;left:0;right:0;bottom:0;padding:16px max(16px,var(--sar)) calc(var(--sab) + 18px) max(16px,var(--sal));display:flex;flex-direction:column;gap:14px;align-items:center;background:linear-gradient(to top,rgba(0,0,0,.55),transparent)}
+  .modes{display:flex;gap:22px;font-size:13px;letter-spacing:.14em;color:var(--dim)}
+  .modes button.on{color:var(--accent);font-weight:600}
+  .row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;width:100%}
+  .row>.l{justify-self:start}.row>.r{justify-self:end}
+  .thumb{width:46px;height:46px;border-radius:10px;background:#222;border:1.5px solid rgba(255,255,255,.4);overflow:hidden;display:grid;place-items:center;font-size:11px;color:var(--dim)}
+  .thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
+  #shutter{width:78px;height:78px;border-radius:50%;border:4px solid #fff;display:grid;place-items:center}
+  #shutter i{display:block;width:62px;height:62px;border-radius:50%;background:#fff;transition:all .2s}
+  #shutter.video i{background:var(--rec)}
+  #shutter.recording i{width:30px;height:30px;border-radius:7px;background:var(--rec)}
+  .manual{height:46px;padding:0 16px;border-radius:14px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:13px;display:flex;align-items:center;gap:6px}
+  .manual.ready{background:var(--accent);color:#1a1008;font-weight:600}
+
+  /* ---------- manual (PDF/URL) overlay ---------- */
+  #man{position:fixed;inset:0;background:#141416;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+  #man.open{transform:none}
+  @media (prefers-reduced-motion:reduce){#man{transition:none}}
+  .mtop{padding:calc(var(--sat) + 8px) max(12px,var(--sar)) 8px max(12px,var(--sal));display:flex;align-items:center;gap:8px;background:#1c1c1f;flex:none}
+  .tabs{display:flex;background:#2a2a2e;border-radius:10px;padding:3px;gap:2px}
+  .tabs button{padding:6px 14px;border-radius:8px;font-size:13px;color:var(--dim)}
+  .tabs button.on{background:#444449;color:#fff}
+  .mtop .sp{flex:1}
+  #mstat{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+  #mstat.rec{color:#ff6b61}
+  .mbody{flex:1;min-height:0;position:relative;background:#333336}
+  #pdfwrap{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:8px}
+  #pdfwrap canvas{display:block;width:100%;margin:0 auto 8px;background:#fff;border-radius:3px}
+  #urlwrap{position:absolute;inset:0;display:flex;flex-direction:column}
+  #urlbar{display:flex;gap:6px;padding:8px max(12px,var(--sar)) 8px max(12px,var(--sal));background:#1c1c1f}
+  #urlbar input{flex:1;min-width:0;font:inherit;font-size:14px;padding:10px 12px;border-radius:10px;border:0;background:#2a2a2e;color:#fff}
+  #urlbar button{padding:0 14px;border-radius:10px;background:#444449;font-size:13px}
+  #frame{flex:1;border:0;background:#fff;width:100%}
+  .empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;color:var(--dim)}
+  .empty b{color:#fff;font-size:17px}
+  .big{padding:14px 22px;border-radius:14px;background:var(--accent);color:#1a1008;font-weight:600;font-size:15px}
+  .note{font-size:12px;line-height:1.6;max-width:30ch}
+  .mbot{flex:none;padding:10px max(16px,var(--sar)) calc(var(--sab) + 10px) max(16px,var(--sal));background:#1c1c1f;display:flex;gap:10px;align-items:center}
+  .back{flex:1;height:52px;border-radius:16px;background:#fff;color:#000;font-weight:600;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .back.rec{background:var(--rec);color:#fff}
+  .pdfbtn{height:52px;padding:0 16px;border-radius:16px;background:#2a2a2e;font-size:13px}
+
+  /* ---------- review ---------- */
+  #rev{position:fixed;inset:0;background:#000;display:flex;flex-direction:column}
+  #rev .media{flex:1;min-height:0;display:grid;place-items:center}
+  #rev img,#rev video{max-width:100%;max-height:100%}
+  #rev .mbot{justify-content:space-between}
+  #toast{position:fixed;left:50%;bottom:calc(var(--sab) + 110px);transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;pointer-events:none;opacity:0;transition:opacity .2s;max-width:88vw;text-align:center}
+  #toast.show{opacity:1}
+  #perm{position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px;text-align:center}
+  #perm h1{font-size:26px;margin:0;letter-spacing:.02em}
+  #perm p{color:var(--dim);margin:0;max-width:32ch;line-height:1.7}
+</style>
+</head>
+<body>
+
+<!-- 起動画面 -->
+<div id="perm">
+  <h1>Safari cam</h1>
+  <p>物撮り用カメラ。撮影しながらマニュアル（PDF / URL）を全画面で確認できます。</p>
+  <button class="big" id="startBtn">カメラを起動</button>
+  <p id="permErr" class="note" style="color:#ff6b61"></p>
+</div>
+
+<!-- カメラ -->
+<div id="cam" class="hidden">
+  <video id="video" autoplay muted playsinline></video>
+  <div id="grid"><i></i><i></i><i></i><i></i></div>
+
+  <div class="top">
+    <div id="recPill" class="pill hidden">
+      <span id="recTime">00:00</span>
+    </div>
+    <div id="hint" class="pill" style="font-size:12px;color:var(--dim)">美白は撮影結果にも反映</div>
+    <div style="display:flex;gap:8px">
+      <button class="ico" id="gridBtn" title="グリッド">⊞</button>
+      <button class="ico" id="flipBtn" title="カメラ切替">⟲</button>
+    </div>
+  </div>
+
+  <div class="beauty">
+    <label>美白</label>
+    <input type="range" id="beauty" min="0" max="100" value="35">
+    <output id="beautyVal">35</output>
+  </div>
+
+  <div class="bottom">
+    <div class="modes">
+      <button data-mode="photo" class="on">写真</button>
+      <button data-mode="video">動画</button>
+    </div>
+    <div class="row">
+      <button class="thumb l" id="thumb">—</button>
+      <button id="shutter"><i></i></button>
+      <button class="manual r" id="manBtn">📄 マニュアル</button>
+    </div>
+  </div>
+</div>
+
+<!-- マニュアル全画面 -->
+<div id="man">
+  <div class="mtop">
+    <div class="tabs">
+      <button data-tab="pdf" class="on">PDF</button>
+      <button data-tab="url">URL</button>
+    </div>
+    <span class="sp"></span>
+    <span id="mstat">撮影待機中</span>
+  </div>
+  <div class="mbody">
+    <div id="pdfwrap">
+      <div class="empty" id="pdfEmpty">
+        <b>マニュアルPDFを開く</b>
+        <button class="big" id="pickPdf">PDFを選ぶ</button>
+        <span class="note">一度開いたPDFはこの端末に保存され、次回も自動で表示されます。</span>
+      </div>
+    </div>
+    <div id="urlwrap" class="hidden">
+      <div id="urlbar">
+        <input id="urlIn" type="url" placeholder="https://…" inputmode="url" autocapitalize="off" autocorrect="off">
+        <button id="urlGo">開く</button>
+      </div>
+      <iframe id="frame" title="manual" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      <div class="empty hidden" id="urlNote" style="top:56px;pointer-events:none">
+        <span class="note">表示されない場合、そのサイトが埋め込みを拒否しています（Instagram等）。PDFに書き出して読み込むのが確実です。</span>
+      </div>
+    </div>
+  </div>
+  <div class="mbot">
+    <button class="pdfbtn" id="pickPdf2">別のPDF</button>
+    <button class="back" id="backBtn">📷 カメラに戻る</button>
+  </div>
+</div>
+<input type="file" id="pdfFile" accept="application/pdf" class="hidden">
+
+<!-- 確認画面 -->
+<div id="rev" class="hidden">
+  <div class="media" id="revMedia"></div>
+  <div class="mbot">
+    <button class="pdfbtn" id="revClose">閉じる</button>
+    <button class="back" id="revSave">保存 / 共有</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<canvas id="work" class="hidden"></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const video = $('#video'), work = $('#work');
+  const toast = (m, t = 2200) => { const el = $('#toast'); el.textContent = m; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), t); };
+
+  let stream = null, facing = 'environment', mode = 'photo';
+  let rec = null, chunks = [], recStart = 0, recTimer = null, recording = false;
+  let drawLoop = null, canvasStream = null;
+  let lastBlob = null, lastType = '';
+  let beauty = 35;
+
+  // ---------- 美白フィルター ----------
+  // brightness + 少しコントラスト下げ + 彩度下げ → 肌がやわらかく白く見える
+  const filterFor = v => {
+    const b = 1 + v * 0.0035, c = 1 - v * 0.0012, s = 1 - v * 0.0018;
+    return `brightness(${b.toFixed(3)}) contrast(${c.toFixed(3)}) saturate(${s.toFixed(3)})`;
+  };
+  const applyPreview = () => { video.style.filter = filterFor(beauty); };
+  $('#beauty').addEventListener('input', e => { beauty = +e.target.value; $('#beautyVal').value = beauty; applyPreview(); try { localStorage.setItem('beauty', beauty); } catch {} });
+  try { const b = localStorage.getItem('beauty'); if (b !== null) { beauty = +b; $('#beauty').value = beauty; $('#beautyVal').value = beauty; } } catch {}
+
+  // ---------- カメラ ----------
+  async function startCamera() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    const constraints = { video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: true };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    video.classList.toggle('mirror', facing === 'user');
+    await video.play();
+    applyPreview();
+  }
+  $('#startBtn').addEventListener('click', async () => {
+    try {
+      await startCamera();
+      $('#perm').classList.add('hidden'); $('#cam').classList.remove('hidden');
+      wakeLock();
+      setTimeout(() => $('#hint').classList.add('hidden'), 3500);
+    } catch (e) { $('#permErr').textContent = 'カメラを起動できません: ' + (e.message || e) + '（Safariでカメラとマイクの許可を確認してください）'; }
+  });
+  $('#flipBtn').addEventListener('click', async () => { if (recording) return toast('録画中は切り替えできません'); facing = facing === 'user' ? 'environment' : 'user'; try { await startCamera(); } catch (e) { toast('切り替え失敗'); } });
+  $('#gridBtn').addEventListener('click', e => { $('#grid').classList.toggle('on'); e.currentTarget.classList.toggle('on'); });
+
+  let lock = null;
+  async function wakeLock() { try { lock = await navigator.wakeLock?.request('screen'); } catch {} }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { wakeLock(); if (stream && !stream.active) startCamera().catch(() => {}); } });
+
+  // ---------- モード ----------
+  document.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', () => {
+    if (recording) return;
+    mode = b.dataset.mode;
+    document.querySelectorAll('.modes button').forEach(x => x.classList.toggle('on', x === b));
+    $('#shutter').classList.toggle('video', mode === 'video');
+  }));
+
+  // ---------- 写真 ----------
+  function takePhoto() {
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w) return toast('カメラ準備中…');
+    work.width = w; work.height = h;
+    const ctx = work.getContext('2d');
+    ctx.save();
+    if (facing === 'user') { ctx.translate(w, 0); ctx.scale(-1, 1); }
+    if ('filter' in ctx) ctx.filter = filterFor(beauty);
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.restore();
+    if (!('filter' in ctx)) whitenPixels(ctx, w, h);
+    flash();
+    work.toBlob(b => { lastBlob = b; lastType = 'image/jpeg'; showThumb(b); toast('写真を撮影しました（左下から保存）'); }, 'image/jpeg', 0.92);
+  }
+  function whitenPixels(ctx, w, h) { // ctx.filter 非対応ブラウザ用の簡易美白
+    if (!beauty) return;
+    const img = ctx.getImageData(0, 0, w, h), d = img.data, k = beauty / 100;
+    for (let i = 0; i < d.length; i += 4) {
+      for (let c = 0; c < 3; c++) { const v = d[i + c]; d[i + c] = v + (255 - v) * 0.35 * k; }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  function flash() { const f = document.createElement('div'); f.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:.8;pointer-events:none;transition:opacity .25s'; document.body.appendChild(f); requestAnimationFrame(() => { f.style.opacity = 0; setTimeout(() => f.remove(), 300); }); }
+
+  // ---------- 動画 ----------
+  function pickMime() {
+    const list = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    return list.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+  }
+  function startRec() {
+    if (!window.MediaRecorder) return toast('このブラウザは録画に未対応です');
+    const w = video.videoWidth, h = video.videoHeight;
+    let src = stream, baked = false;
+    // 美白を動画にも焼き込む：canvas 経由で録画（対応ブラウザのみ）
+    const ctx = work.getContext('2d');
+    if (w && 'filter' in ctx && work.captureStream) {
+      work.width = w; work.height = h;
+      canvasStream = work.captureStream(30);
+      stream.getAudioTracks().forEach(t => canvasStream.addTrack(t));
+      const draw = () => { ctx.save(); if (facing === 'user') { ctx.translate(w, 0); ctx.scale(-1, 1); } ctx.filter = filterFor(beauty); ctx.drawImage(video, 0, 0, w, h); ctx.restore(); drawLoop = requestAnimationFrame(draw); };
+      draw(); src = canvasStream; baked = true;
+    }
+    const mime = pickMime();
+    try { rec = new MediaRecorder(src, mime ? { mimeType: mime, videoBitsPerSecond: 8_000_000 } : undefined); }
+    catch (e) { stopDraw(); return toast('録画を開始できません: ' + e.message); }
+    chunks = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      stopDraw();
+      const type = rec.mimeType || mime || 'video/mp4';
+      lastBlob = new Blob(chunks, { type }); lastType = type;
+      showThumb(lastBlob); toast('動画を保存しました（左下から保存）');
+    };
+    rec.start(1000);
+    recording = true; recStart = Date.now();
+    $('#shutter').classList.add('recording'); $('#recPill').classList.remove('hidden');
+    $('#mstat').textContent = '🔴 録画中 00:00'; $('#mstat').classList.add('rec'); $('#backBtn').classList.add('rec');
+    recTimer = setInterval(tick, 500); tick();
+    if (!baked) toast('この端末では美白はプレビューのみ（動画には反映されません）', 3200);
+  }
+  function stopDraw() { if (drawLoop) cancelAnimationFrame(drawLoop); drawLoop = null; if (canvasStream) canvasStream.getVideoTracks().forEach(t => t.stop()); canvasStream = null; }
+  function stopRec() {
+    if (!rec) return;
+    try { rec.stop(); } catch {}
+    recording = false; clearInterval(recTimer);
+    $('#shutter').classList.remove('recording'); $('#recPill').classList.add('hidden');
+    $('#mstat').textContent = '撮影待機中'; $('#mstat').classList.remove('rec'); $('#backBtn').classList.remove('rec');
+  }
+  function tick() {
+    const s = Math.floor((Date.now() - recStart) / 1000), t = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    $('#recTime').textContent = t; $('#mstat').textContent = '🔴 録画中 ' + t; $('#backBtn').textContent = '📷 カメラに戻る（録画中 ' + t + '）';
+  }
+  $('#shutter').addEventListener('click', () => {
+    if (mode === 'photo') takePhoto();
+    else recording ? stopRec() : startRec();
+  });
+
+  // ---------- サムネ / 確認 / 保存 ----------
+  let thumbUrl = null;
+  function showThumb(blob) {
+    if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+    thumbUrl = URL.createObjectURL(blob);
+    const t = $('#thumb'); t.innerHTML = '';
+    if (blob.type.startsWith('video')) { const v = document.createElement('video'); v.src = thumbUrl; v.muted = true; v.playsInline = true; t.appendChild(v); }
+    else { const i = document.createElement('img'); i.src = thumbUrl; t.appendChild(i); }
+  }
+  $('#thumb').addEventListener('click', () => {
+    if (!lastBlob) return toast('まだ撮影していません');
+    const m = $('#revMedia'); m.innerHTML = '';
+    if (lastBlob.type.startsWith('video')) { const v = document.createElement('video'); v.src = thumbUrl; v.controls = true; v.playsInline = true; m.appendChild(v); }
+    else { const i = document.createElement('img'); i.src = thumbUrl; m.appendChild(i); }
+    $('#rev').classList.remove('hidden');
+  });
+  $('#revClose').addEventListener('click', () => { $('#rev').classList.add('hidden'); $('#revMedia').innerHTML = ''; });
+  $('#revSave').addEventListener('click', async () => {
+    if (!lastBlob) return;
+    const isV = lastBlob.type.startsWith('video');
+    const ext = isV ? (lastBlob.type.includes('mp4') ? 'mp4' : 'webm') : 'jpg';
+    const name = (isV ? 'VID_' : 'IMG_') + new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + '.' + ext;
+    const file = new File([lastBlob], name, { type: lastBlob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a'); a.href = thumbUrl; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    toast('ダウンロードしました');
+  });
+
+  // ---------- マニュアル（PDF / URL） ----------
+  const man = $('#man');
+  $('#manBtn').addEventListener('click', () => { man.classList.add('open'); });
+  $('#backBtn').addEventListener('click', () => { man.classList.remove('open'); });
+  document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+    const pdf = b.dataset.tab === 'pdf';
+    $('#pdfwrap').classList.toggle('hidden', !pdf); $('#urlwrap').classList.toggle('hidden', pdf);
+    $('#pickPdf2').classList.toggle('hidden', !pdf);
+  }));
+
+  // PDF: pdf.js で描画し、IndexedDB に保存
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const idb = () => new Promise((res, rej) => { const r = indexedDB.open('safaricam', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const kvSet = async (k, v) => { try { const db = await idb(); const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); } catch {} };
+  const kvGet = async k => { try { const db = await idb(); return await new Promise(res => { const r = db.transaction('kv').objectStore('kv').get(k); r.onsuccess = () => res(r.result); r.onerror = () => res(undefined); }); } catch { return undefined; } };
+
+  async function renderPdf(buf) {
+    const wrap = $('#pdfwrap'); wrap.querySelectorAll('canvas').forEach(c => c.remove());
+    $('#pdfEmpty').classList.add('hidden');
+    const doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    const cssW = wrap.clientWidth - 16, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const vp0 = page.getViewport({ scale: 1 }), scale = cssW / vp0.width, vp = page.getViewport({ scale: scale * dpr });
+      const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height; c.style.height = (vp.height / dpr) + 'px';
+      wrap.appendChild(c);
+      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    }
+    $('#manBtn').classList.add('ready'); $('#manBtn').textContent = '📄 マニュアル';
+  }
+  const pick = () => $('#pdfFile').click();
+  $('#pickPdf').addEventListener('click', pick); $('#pickPdf2').addEventListener('click', pick);
+  $('#pdfFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const buf = await f.arrayBuffer();
+    await kvSet('pdf', buf); await kvSet('pdfName', f.name);
+    try { await renderPdf(buf); toast(f.name + ' を読み込みました'); } catch (err) { toast('PDFを開けません: ' + err.message); }
+    e.target.value = '';
+  });
+  kvGet('pdf').then(buf => { if (buf) renderPdf(buf).catch(() => {}); });
+
+  // URL
+  const loadUrl = () => {
+    let u = $('#urlIn').value.trim(); if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    $('#frame').src = u; $('#urlNote').classList.remove('hidden');
+    setTimeout(() => $('#urlNote').classList.add('hidden'), 6000);
+    try { localStorage.setItem('url', u); } catch {}
+  };
+  $('#urlGo').addEventListener('click', loadUrl);
+  $('#urlIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadUrl(); $('#urlIn').blur(); } });
+  try { const u = localStorage.getItem('url'); if (u) { $('#urlIn').value = u; $('#frame').src = u; } } catch {}
+
+  // ---------- PWA ----------
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+})();
+</script>
+</body>
+</html>
