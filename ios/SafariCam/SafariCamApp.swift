@@ -24,15 +24,18 @@ struct ContentView: View {
                 // 左上マーク：どの画面でも同じ位置、タップで切替
                 VStack {
                     HStack {
-                        Button { screen = (screen == .browser) ? .camera : .browser } label: {
-                            Image(systemName: screen == .browser ? "camera" : "doc.text")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(.white)
-                                .frame(width: 40, height: 40)
-                                .background(Color.black.opacity(0.45))
-                                .clipShape(Circle())
-                                .opacity(0.7)
-                        }
+                        Image(systemName: "megaphone.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
+                            .opacity(0.6)
+                            .contentShape(Circle())
+                            .onLongPressGesture(minimumDuration: 0.4) {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.easeOut(duration: 0.15)) { screen = (screen == .browser) ? .camera : .browser }
+                            }
                         Spacer()
                     }
                     Spacer()

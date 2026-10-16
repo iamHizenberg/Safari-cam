@@ -163,7 +163,7 @@ struct BrowserScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Spacer().frame(width: 40)
+                Spacer().frame(width: 32)
                 Button { web.webView.goBack() } label: {
                     Image(systemName: "chevron.left").font(.system(size: 16, weight: .semibold)).frame(width: 32, height: 38)
                 }
